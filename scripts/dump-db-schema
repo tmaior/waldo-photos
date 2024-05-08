@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+DB_VERSION=1684_f4d7fc501bfafb06905a802891adf51f4e82a461
+DOCKER_REGISTRY_URL=409236574440.dkr.ecr.us-east-1.amazonaws.com
+DOCKER_TAG=$DOCKER_REGISTRY_URL/waldo-core-pg:$DB_VERSION
+TARGET_FILE=$(pwd)/db_schema.sql
+
+if [ ! -f $TARGET_FILE ]; then
+  aws ecr get-login-password --region us-east-1 | docker login -u AWS --password-stdin https://409236574440.dkr.ecr.us-east-1.amazonaws.com
+  docker run --rm -i $DOCKER_TAG script dump > $TARGET_FILE
+fi

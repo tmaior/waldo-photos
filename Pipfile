@@ -1,0 +1,21 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+amqp = "*"
+asyncpg = "==0.21.0"
+flask = "*"
+future = "*"
+geoalchemy2 = "*"
+gunicorn = "*"
+pyyaml = "*"
+requests = "*"
+sqlalchemy = "<2.0"
+sqlalchemy_utils = "*"
+structlog = "*"
+waldo_common = {editable = true, path = "./common"}
+
+[requires]
+python_version = "3.8.5"

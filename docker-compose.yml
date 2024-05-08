@@ -1,0 +1,88 @@
+version: '3.5'
+
+services:
+  cdc_service:
+    build: .
+    container_name: cdc_service
+    ports:
+        - 29000:5000
+    environment:
+      AMQP_URL: "amqp://rabbitmq:1234@rabbitmq:5672/%2f"
+      COMMS_ROUTING_KEY: 'waldo-comm-service-local'
+      DB_CONNECTION_URL: ${DB_CONNECTION_URL}
+      ERROR_ROUTING_KEY: 'cdc-errors-local'
+      FACE_SEARCH_ROUTING_KEY: 'waldo-face-search-local'
+      FACE_MATCHER_ROUTING_KEY: 'waldo-face-matcher-local'
+      FACE_SURVEYOR_ROUTING_KEY: 'waldo-face-surveyor-local'
+      HIVE_NEXT_ROUTING_KEY: 'waldo-hive-next-service-local'
+      HIVE_ROUTING_KEY: 'waldo-hive-local'
+      LOG_FORMAT_JSON: 0
+      LOG_LEVEL: DEBUG
+      NOTIFICATIONS_ROUTING_KEY: 'waldo-notifications-local'
+      MATCHED_PHOTO_AGGREGATOR_ROUTING_KEY: 'waldo-matched-photo-aggregator-local'
+      PHOTO_PREP_ROUTING_KEY: 'waldo-photo-prep-local'
+      PHOTO_ROUTER_ROUTING_KEY: 'waldo-photo-router-local'
+      PHOTO_SHARE_BLOCKER_ROUTING_KEY: 'waldo-photo-share-blocker-local'
+      REFERENCE_FACE_COORDINATOR_ROUTING_KEY: 'waldo-reference-face-coordinator-local'
+      RMQ_HEARTBEAT_ENABLED: 0
+      SLACK_ROUTING_KEY: 'waldo-slack-local'
+      STATE_ROUTING_KEY: 'waldo-state-local'
+      TIME_MATCHER_ROUTING_KEY: 'waldo-time-matcher-local'
+    networks:
+        - mynetwork
+    restart: always
+
+  cdc_test:
+    build: .
+    container_name: cdc_test
+    environment:
+      AMQP_URL: "amqp://rabbitmq:1234@rabbitmq:5672/%2f"
+      COMMS_ROUTING_KEY: 'waldo-comm-service-local'
+      DB_CONNECTION_URL: ${DB_CONNECTION_URL}
+      ERROR_ROUTING_KEY: 'cdc-errors-local'
+      FACE_SEARCH_ROUTING_KEY: 'waldo-face-search-local'
+      FACE_MATCHER_ROUTING_KEY: 'waldo-face-matcher-local'
+      FACE_SURVEYOR_ROUTING_KEY: 'waldo-face-surveyor-local'
+      HIVE_NEXT_ROUTING_KEY: 'waldo-hive-next-service-local'
+      HIVE_ROUTING_KEY: 'waldo-hive-local'
+      LOG_FORMAT_JSON: 0
+      LOG_LEVEL: INFO
+      NOTIFICATIONS_ROUTING_KEY: 'waldo-notifications-local'
+      MATCHED_PHOTO_AGGREGATOR_ROUTING_KEY: 'waldo-matched-photo-aggregator-local'
+      PHOTO_PREP_ROUTING_KEY: 'waldo-photo-prep-local'
+      PHOTO_ROUTER_ROUTING_KEY: 'waldo-photo-router-local'
+      PHOTO_SHARE_BLOCKER_ROUTING_KEY: 'waldo-photo-share-blocker-local'
+      REFERENCE_FACE_COORDINATOR_ROUTING_KEY: 'waldo-reference-face-coordinator-local'
+      RMQ_HEARTBEAT_ENABLED: 0
+      SLACK_ROUTING_KEY: 'waldo-slack-local'
+      STATE_ROUTING_KEY: 'waldo-state-local'
+      TIME_MATCHER_ROUTING_KEY: 'waldo-time-matcher-local'
+    networks:
+        - mynetwork
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:3.6-management
+    environment:
+      RABBITMQ_ERLANG_COOKIE: "secretcookie"
+      RABBITMQ_DEFAULT_USER: "rabbitmq"
+      RABBITMQ_DEFAULT_PASS: "1234"
+    networks:
+        - mynetwork
+
+  postgres:
+    container_name: postgres
+    # command: ["postgres", "-c", "log_disconnections=true", "-c", "log_statement=all", "-c", "log_destination=stderr"]
+    image: ${DB_IMAGE}
+    ports:
+        - 31432:5432
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    networks:
+        - mynetwork
+
+networks:
+  mynetwork:
+    name: cdc

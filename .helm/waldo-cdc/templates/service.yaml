@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "waldo-cdc.name" . }}
+  labels:
+    app: {{ template "waldo-cdc.name" . }}
+    chart: {{ template "waldo-cdc.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+   - name: http
+     port: 80 
+     targetPort: {{ .Values.container.port }}
+  {{ if .Values.service.cert_arn }}
+   - name: https
+     port: 443 
+     targetPort: {{ .Values.container.port }}
+  {{ end }}
+  selector:
+    app: {{ template "waldo-cdc.name" . }}

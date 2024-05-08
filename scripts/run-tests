@@ -1,0 +1,84 @@
+#! /usr/bin/env bash
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+function finish {
+    kill $(jobs -p)
+    docker logs cdc_service &> test_logs/service.log || true
+    docker logs rabbitmq &> test_logs/rabbitmq.log || true
+    docker logs postgres &> test_logs/postgres.log || true
+
+    if [ "$DISPLAY_TEST_LOGS" == 'true' ]; then
+        for file in test_logs/*; do
+            printf "\n\n${GREEN}=-=-= $file =-=-=${NC}\n"
+             cat $file || true
+        done
+    fi
+
+    if [ "$TEST_STATUS" == 'passed' ]; then
+        printf "${GREEN}=-=-= Integration Tests PASSED!${NC}\n"
+    else
+        printf "${RED}=-=-= Integration Tests FAILED! ${NC} (See logs above)\n\n"
+    fi
+    docker-compose down
+}
+trap finish EXIT
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+TEST_STATUS='unknown'
+DISPLAY_TEST_LOGS='true'
+export DB_IMAGE=circleci/postgres:13-postgis
+export DB_USER=postgres
+export DB_PASS=dev123
+export DB_NAME=core
+export DB_CONNECTION_URL="postgresql://${DB_USER}:${DB_PASS}@postgres/${DB_NAME}"
+
+# this creates a named_pipe called '.command_pipe' in $PWD that we later use to run
+# docker-compose commands from within the test container
+scripts/listen-and-run &
+
+rm -rf test_logs || true
+mkdir test_logs
+
+printf "Running Integration Tests...\n"
+
+docker-compose build cdc_service 2>&1 | tee -a test_logs/build_cdc_service.log
+docker-compose build cdc_test 2>&1 | tee -a test_logs/build_cdc_test.log
+
+docker-compose up -d rabbitmq &> test_logs/up_rabbitmq.log
+
+docker-compose up -d postgres &> test_logs/up_postgres.log
+printf "waiting for postgres to be up..."
+sleep 10 # turns out postgres comes up, runs some init, then shuts down and boots back up...
+scripts/wait-for localhost:31432 -- printf " postgres is up!\n"
+
+printf "Preparing postgres database for tests\n"
+printf "  |- dumping schema\n"
+scripts/dump-db-schema &> test_logs/dump_db_schema.log
+
+printf "  \`- loading schema into db\n"
+docker run --rm --network cdc -v $PWD:/repo ${DB_IMAGE} psql ${DB_CONNECTION_URL} -f /repo/db_schema.sql &> test_logs/db_update.out
+
+docker run --rm --network cdc -v $PWD:/repo ${DB_IMAGE} psql ${DB_CONNECTION_URL} -f /repo/enable_triggers.sql &> test_logs/db_update_triggers.out
+
+printf "Running integration tests now...\n"
+# we have to mount $PWD to /repo so the tests (that are in a container) can launch and shutdown the
+# CDC service (which runs in another container)
+if [ "$#" -ge 1 ]; then
+    docker-compose run -v $PWD:/repo --rm cdc_test python -m unittest $@
+else
+    docker-compose run -v $PWD:/repo --rm cdc_test python -m unittest discover --buffer --verbose
+fi
+
+TEST_STATUS='passed'
+if [ -n "${FORCE_DISPLAY_TEST_LOGS:-}" ]; then
+    DISPLAY_TEST_LOGS='true'
+else
+    # suppress logs for passing tests (unless forced)
+    DISPLAY_TEST_LOGS='false'
+fi

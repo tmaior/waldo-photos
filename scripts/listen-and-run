@@ -1,0 +1,22 @@
+#! /usr/bin/env bash
+pipe=.command_pipe
+pipe_output=.command_pipe_output
+
+[ -p "$pipe" ] || mkfifo -m 0600 "$pipe" || exit 1
+
+function finish {
+    rm -rf "$pipe"
+}
+trap finish EXIT
+
+rm -rf "$pipe_output"
+touch "$pipe_output"
+while :; do
+    while read -r cmd; do
+        if [ "$cmd" ]; then
+            now=$(date +"%T.%3N")
+            printf '\n [%s] Running %s ...' "$now" "$cmd" >> "$pipe_output"
+            /usr/bin/env bash -c "$cmd" >> "$pipe_output" 2>&1
+        fi
+    done <"$pipe"
+done

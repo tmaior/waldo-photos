@@ -1,0 +1,436 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ template "waldo-cdc.name" . }}
+  labels:
+    app: {{ template "waldo-cdc.name" . }}
+    name: {{ template "waldo-cdc.name" . }}
+    chart: {{ template "waldo-cdc.chart" . }}
+    release: {{ .Release.Name }}
+    heritage: {{ .Release.Service }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ template "waldo-cdc.name" . }}
+  strategy:
+    type: Recreate    # IMPORTANT: kill the current pod, and only then launch the new version (this generates a brief downtime), also replicaCount should be set to 1
+  template:
+    metadata:
+      labels:
+        app: {{ template "waldo-cdc.name" . }}
+        release: {{ .Release.Name }}
+     {{- if eq .Values.kube2iam.enabled true }}
+      annotations:
+        iam.amazonaws.com/role: "arn:aws:iam::{{ int .Values.kube2iam.accountId }}:role/{{ .Values.kube2iam.role }}"
+     {{- end }}
+    spec:
+      imagePullSecrets:
+        - name: {{ .Values.image.imagePullSecrets }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.container.port }}
+          readinessProbe:
+            httpGet:
+              port: {{ .Values.container.port }}
+              path: "/health-check/"
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              port: {{ .Values.container.port }}
+              path: "/health-check/"
+            initialDelaySeconds: 60
+            periodSeconds: 60
+            timeoutSeconds: 5
+          env:
+            - name: WALDO_CORE_PG_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: waldo-postgres-core-user
+                  key: password
+            - name: WALDO_CORE_PG_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: waldo-postgres-core-credentials
+                  key: USER
+            - name: WALDO_CORE_PG_DB
+              valueFrom:
+                configMapKeyRef:
+                  name: waldo-postgres-core-credentials
+                  key: DATABASE
+            - name: WALDO_CORE_PG_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: waldo-postgres-core-credentials
+                  key: HOST
+            - name: DB_CONNECTION_URL
+              value: postgresql://$(WALDO_CORE_PG_USER):$(WALDO_CORE_PG_PASS)@$(WALDO_CORE_PG_HOST):5432/$(WALDO_CORE_PG_DB)
+            - name: RABBITMQ_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: waldo-rabbitmq-credentials
+                  key: HOST
+            - name: RABBITMQ_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: waldo-rabbitmq-credentials
+                  key: USER
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: waldo-rabbitmq-secret
+                  key: password
+            - name: AMQP_URL
+              value: amqp://$(RABBITMQ_USER):$(RABBITMQ_PASSWORD)@$(RABBITMQ_HOST)/%2f
+            - name: LOG_LEVEL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: LOG_LEVEL
+            - name: FACE_MATCHER_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: FACE_MATCHER_ROUTING_KEY
+            - name: FACE_SURVEYOR_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: FACE_SURVEYOR_ROUTING_KEY
+            - name: ERROR_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ERROR_ROUTING_KEY
+            - name: PHOTO_PREP_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTO_PREP_ROUTING_KEY
+            - name: SLACK_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SLACK_ROUTING_KEY
+            - name: ALBUM_UPDATED_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_UPDATED_ROUTING_KEY
+                  optional: true
+            - name: ALBUM_CREATED_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_CREATED_ROUTING_KEY
+                  optional: true
+            - name: ALBUM_FOLDER_SHARE_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_FOLDER_SHARE_UPDATED_ENDPOINT
+                  optional: true
+            - name: ALBUM_FOLDER_SHARE_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_FOLDER_SHARE_CREATED_ENDPOINT
+                  optional: true
+            - name: ALBUM_MEMBERSHIP_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_MEMBERSHIP_CREATED_ENDPOINT
+                  optional: true
+            - name: ALBUM_MEMBERSHIP_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_MEMBERSHIP_UPDATED_ENDPOINT
+                  optional: true
+            - name: HIVE_NEXT_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: HIVE_NEXT_ROUTING_KEY
+            - name: COMMS_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: COMMS_ROUTING_KEY
+            - name: ALBUM_SHARE_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_SHARE_UPDATED_ENDPOINT
+                  optional: true
+            - name: ALBUMS_MEMBERSHIP_STATUS_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUMS_MEMBERSHIP_STATUS_ENDPOINT
+                  optional: true
+            - name: AUTH_PHONE_VERIFICATION_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: AUTH_PHONE_VERIFICATION_CREATED_ENDPOINT
+                  optional: true
+            - name: TIME_MATCHER_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: TIME_MATCHER_ROUTING_KEY
+            - name: REFERENCE_FACE_COORDINATOR_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: REFERENCE_FACE_COORDINATOR_ROUTING_KEY
+            - name: CHECK_AUTOLAND_SIMPLE_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: CHECK_AUTOLAND_SIMPLE_ENDPOINT
+                  optional: true
+            - name: FACE_MATCH_VOTE_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: FACE_MATCH_VOTE_UPDATED_ENDPOINT
+                  optional: true
+            - name: HEALTH_CHECK_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: HEALTH_CHECK_ROUTING_KEY
+                  optional: true
+            - name: STATE_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: STATE_ROUTING_KEY
+            - name: JERSEY_NUMBER_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: JERSEY_NUMBER_UPDATED_ENDPOINT
+                  optional: true
+            - name: NOTIFICATIONS_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: NOTIFICATIONS_ROUTING_KEY
+            - name: MATCHED_PHOTO_AGGREGATOR_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: MATCHED_PHOTO_AGGREGATOR_ROUTING_KEY
+            - name: DELIVER_PHOTO_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: DELIVER_PHOTO_ENDPOINT
+                  optional: true
+            - name: PHOTO_SHARE_BLOCKER_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTO_SHARE_BLOCKER_ROUTING_KEY
+            - name: MATCHED_PHOTO_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: MATCHED_PHOTO_CREATED_ENDPOINT
+                  optional: true
+            - name: MATCHED_PHOTO_DELETED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: MATCHED_PHOTO_DELETED_ENDPOINT
+                  optional: true
+            - name: PHOTO_SHARE_BLOCK_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTO_SHARE_BLOCK_CREATED_ENDPOINT
+                  optional: true
+            - name: PHOTO_SHARE_BLOCK_DELETED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTO_SHARE_BLOCK_DELETED_ENDPOINT
+                  optional: true
+            - name: FACE_GROUP_CONTENT_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: FACE_GROUP_CONTENT_ENDPOINT
+                  optional: true
+            - name: PHOTOSTREAMS_PHOTOS_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTOSTREAMS_PHOTOS_CREATED_ENDPOINT
+                  optional: true
+            - name: PHOTOSTREAMS_PHOTO_INSERTED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTOSTREAMS_PHOTO_INSERTED_ENDPOINT
+                  optional: true
+            - name: PHOTOSTREAM_PHOTO_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTOSTREAM_PHOTO_CREATED_ENDPOINT
+                  optional: true
+            - name: PHOTOSTREAM_PHOTO_DELETED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTOSTREAM_PHOTO_DELETED_ENDPOINT
+                  optional: true
+            - name: PHOTOSTREAM_PHOTO_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTOSTREAM_PHOTO_UPDATED_ENDPOINT
+                  optional: true
+            - name: PHOTO_ROUTER_ROUTING_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PHOTO_ROUTER_ROUTING_KEY
+            - name: PUB_COMMANDERING_IDENTITY_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PUB_COMMANDERING_IDENTITY_CREATED_ENDPOINT
+                  optional: true
+            - name: PUB_COMMANDERING_IDENTITY_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PUB_COMMANDERING_IDENTITY_UPDATED_ENDPOINT
+                  optional: true
+            - name: PUB_COMMANDERING_IDENTITY_DELETED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PUB_COMMANDERING_IDENTITY_DELETED_ENDPOINT
+                  optional: true
+            - name: PURCHASED_ALBUM_FOLDER_IDENTITY_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: PURCHASED_ALBUM_FOLDER_IDENTITY_CREATED_ENDPOINT
+                  optional: true
+            - name: ROSTER_IDENTITY_LINKED_IDENTITY_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ROSTER_IDENTITY_LINKED_IDENTITY_CREATED_ENDPOINT
+                  optional: true
+            - name: ROSTER_IDENTITY_LINKED_IDENTITY_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ROSTER_IDENTITY_LINKED_IDENTITY_UPDATED_ENDPOINT
+                  optional: true
+            - name: SELECTED_IDENTITY_LINK_DELETED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SELECTED_IDENTITY_LINK_DELETED_ENDPOINT
+                  optional: true
+            - name: SELECTED_IDENTITY_LINK_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SELECTED_IDENTITY_LINK_UPDATED_ENDPOINT
+                  optional: true
+            - name: SUBSCRIBED_ALBUM_FOLDER_IDENTITY_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SUBSCRIBED_ALBUM_FOLDER_IDENTITY_CREATED_ENDPOINT
+                  optional: true
+            - name: TRANSACTION_REFUND_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: TRANSACTION_REFUND_CREATED_ENDPOINT
+                  optional: true
+            - name: WATERMARK_CONFIG_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: WATERMARK_CONFIG_UPDATED_ENDPOINT
+                  optional: true
+            - name: DNP_ALBUM_STATUS_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: DNP_ALBUM_STATUS_ENDPOINT
+                  optional: true
+            - name: SELECTED_IDENTITY_CREATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SELECTED_IDENTITY_CREATED_ENDPOINT
+                  optional: true
+            - name: SELECTED_IDENTITY_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SELECTED_IDENTITY_UPDATED_ENDPOINT
+                  optional: true
+            - name: ALBUM_TAGS_UPDATED_ENDPOINT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: ALBUM_TAGS_UPDATED_ENDPOINT
+                  optional: true
+            - name: MAX_PRIORITY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: MAX_PRIORITY
+                  optional: true
+            - name: GENERAL_PRIORITY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: GENERAL_PRIORITY
+                  optional: true
+            - name: SELFIE_PRIORITY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: SELFIE_PRIORITY
+                  optional: true
+            - name: REPROCESSING_PRIORITY
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configmap.name }}
+                  key: REPROCESSING_PRIORITY
+                  optional: true
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+    {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+    {{- end }}
+    {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+    {{- end }}

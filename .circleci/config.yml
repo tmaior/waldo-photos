@@ -1,0 +1,61 @@
+# Python CircleCI 2.0 configuration file
+#
+# Check https://circleci.com/docs/2.0/language-python/ for more details
+#
+version: 2
+jobs:
+  test:
+    machine:
+      image: ubuntu-2004:202201-02
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "SO:ME:FIN:G:ER:PR:IN:T"
+      - run: git submodule sync
+      - run: git submodule update --init
+      - run: scripts/run-tests
+
+  build_and_deploy:
+    docker:
+      - image: giannisp/python-docker-awscli:1.0.0
+    environment:
+      DOCKER_REG_URL: 409236574440.dkr.ecr.us-east-1.amazonaws.com
+      APP_NAME: waldo-cdc
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints:
+            - "SO:ME:FIN:G:ER:PR:IN:T"
+      - run: git submodule sync
+      - run: git submodule update --init
+      - setup_remote_docker
+      - run:
+          name: Build and deploy docker image
+          command: |
+            $(aws ecr get-login --no-include-email --region us-east-1)
+            TAG=${CIRCLE_BUILD_NUM}_$CIRCLE_SHA1
+            DOCKER_BLD_TAG=$DOCKER_REG_URL/$APP_NAME:$TAG
+
+            docker build -t $DOCKER_BLD_TAG .
+            docker push $DOCKER_BLD_TAG
+
+            aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+            aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+            aws s3 cp s3://waldo-circleci-k8s/k8s_deploy_v2.sh $HOME/.helm/
+            bash -x $HOME/.helm/k8s_deploy_v2.sh $APP_NAME development $APP_NAME $TAG $CIRCLE_BUILD_NUM
+
+workflows:
+  version: 2
+  test_build_and_deploy:
+    jobs:
+      - test:
+          context: aws_access
+      - build_and_deploy:
+          context: aws_access
+          requires:
+            - test
+          filters:
+            branches:
+              only:
+                - master
